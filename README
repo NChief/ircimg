@@ -1,0 +1,23 @@
+############################################################################################
+# ircimg v1.0 by NChief
+# This scripts saves every image linkend in channels and saves them to a directory.
+#
+# IrssiX::Async is needed (used for forking the download to avoid blocking)
+# you can get it at http://mauke.dyndns.org/stuff/irssi/lib/IrssiX/
+# You also need WWW::Mechanize and DBI (get it from cpan)
+#
+## Settings:
+# /set ircimg_path /var/www/ircimg
+#       Where to save the images. (usualy where your web-server get files)
+# /set ircimg_url http://yoursite.com/ircimg
+#       The url where the images wil be located throug www
+# /set ircimg_ircnet EFNet
+#       When a new image arives it get announce on a channel, what ircnet is that channel on.
+# /set ircimg_channel #myircimgs
+#       Announce channel.
+# /set ircimg_channelexcludelist #chan1 #chan2
+#       space sepreated list of channels you DONT want to get images from.
+# /set ircimg_channellist #chan1 #chan2
+#       space sepreted list of channels you WANT to get images from. ALL channels if empty.
+############################################################################################
+
