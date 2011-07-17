@@ -22,7 +22,7 @@
 ############################################################################################
 
 use strict;
-use Irssi qw(print settings_add_str settings_get_str);
+use Irssi qw(print settings_add_str settings_get_str settings_add_bool settings_get_bool);
 use warnings;
 use vars qw($VERSION %IRSSI);
 use WWW::Mechanize;
@@ -49,15 +49,20 @@ settings_add_str('ircimg', 'ircimg_ircnet', 'EFNet');
 settings_add_str('ircimg', 'ircimg_channel', '#myircimgs');
 settings_add_str('ircimg', 'ircimg_channelexcludelist', ''); # space seperated list with channels you want to exclude
 settings_add_str('ircimg', 'ircimg_channellist', ''); # space sepreated list. wil only get images from channels in list. All channels if empty
+settings_add_bool('ircimg', 'ircimg_debug', 0);
 
 sub fork_dl {
 	my ($url, $channel, $nick) = @_;
+	my $debug = settings_get_bool('ircimg_debug');
 	my $link = settings_get_str('ircimg_url');
 	return 1 if ($url =~ /\Q$link\E/);
 	fork_off('', sub { $mech->get($url); $mech->success ? print $mech->content : print undef; }, sub {
 		my ($content) = shift;
 	
-		return 2 unless defined $content;
+		unless (defined $content) {
+			print CRAP "\002ircimg debug:\002 no content" if $debug;
+			return;
+		}
 		
 		my $md5 = md5_hex($content);
 	
@@ -65,24 +70,37 @@ sub fork_dl {
 		
 		my $dbh = DBI->connect( "dbi:SQLite:$dbfile" ) || die "Cannot connect: $DBI::errstr";
 		my $res = $dbh->selectall_arrayref( "SELECT md5 FROM imgmd5 WHERE md5=".$dbh->quote($md5)." LIMIT 1" );
-		return 1 if($#{$res} eq 0); # already downloaded
-		return 3 unless ($dbh->do("INSERT INTO imgmd5 (md5) VALUES (".$dbh->quote($md5).")"));
+		if($#{$res} eq 0) { # already downloaded
+			print CRAP "\002ircimg debug:\002 $url already downloaded: $md5" if $debug;
+			#print $content if ($url =~ /4chan/);
+			return;
+		}
+		unless ($dbh->do("INSERT INTO imgmd5 (md5) VALUES (".$dbh->quote($md5).")")) {
+			print CRAP "\002ircimg debug:\002 $url error inserting md5 to db" if $debug;
+			return;
+		}
 		
 		$url =~ /.*\/(.*)/;
 		my $name = $1;
 		$name =~ s/\%20/_/g;
+		$name =~ s/\%2B/-/g;
 		$name = URLDecode($name);
 		while(-e '/var/www/ircimg/'.$name) {
 			$name = "1".$name;
 		}
 		my $path = settings_get_str('ircimg_path');
 		$path =~ s/\/$//;
-		open(my $IMG, ">", $path.'/'.$name) or return;
-		binmode $IMG;
-		print $IMG $content;
-		close($IMG);
+		if(open(my $IMG, ">", $path.'/'.$name)) {
+			binmode $IMG;
+			print $IMG $content;
+			close($IMG);
+		} else {
+			print CRAP "\002ircimg debug:\002 err opening file: $!" if $debug;
+			return;
+		}
 		unless (-B $path.'/'.$name) {
 			unlink($path.'/'.$name);
+			print CRAP "\002ircimg debug:\002 $url not a binary file" if $debug;
 			return 1;
 		}
 		
@@ -111,7 +129,9 @@ sub check {
 		fork_dl($1, $target, $nick) if $ok;
 	}
 	while($msg =~ /http:\/\/imgur\.com\S*\/(\S+)/g) {
-		fork_dl('http://i.imgur.com/'.$1.'.jpg', $target, $nick) if $ok;
+		my $id = $1;
+		next if ($id =~ /\.(jpg|png|gif|jpeg)$/);
+		fork_dl('http://i.imgur.com/'.$id.'.jpg', $target, $nick) if $ok;
 	}
 	while($msg =~ /(http:\/\/artige\.no\/bilde\/\d+)/g) {
 		$mech->get($1);
